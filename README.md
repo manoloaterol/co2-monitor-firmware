@@ -5,7 +5,7 @@ Firmware for an indoor CO₂ monitor built on the **ESP32-S2**, with a
 **NV3030B** display driven from a full frame buffer.
 
 How to set up and use the monitor is in the **user documentation**:
-**TODO: documentation site URL**. This README is for building and changing the
+<https://manoloaterol.github.io/co2-monitor-docs/>. This README is for building and changing the
 firmware.
 
 ## What it does
