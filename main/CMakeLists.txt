@@ -1,0 +1,10 @@
+idf_component_register(SRCS "main.c"
+                            "app_loop.c"
+                            "screens.c"
+                            "chart.c"
+                            "co2_color.c"
+                            "buttons.c"
+                            "status_led.c"
+                            "backlight.c"
+                            "logo_mat.c"
+                    INCLUDE_DIRS ".")

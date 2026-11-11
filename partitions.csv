@@ -1,0 +1,18 @@
+# Partition table for 4 MB of flash.
+#
+# Two 1.75 MB app partitions so the device can be updated over OTA from the
+# web interface: it boots from one and writes to the other, so a power cut
+# halfway through an update does not leave the device bricked.
+#
+# NVS grows from 24K to 64K because it holds the settings: Wi-Fi credentials,
+# MQTT broker settings, altitude and temperature offset.
+#
+# 0x60000 (384K) are left unallocated at the end, in case a data partition is
+# needed later on.
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x10000,
+otadata,    data, ota,      0x19000,  0x2000,
+phy_init,   data, phy,      0x1b000,  0x1000,
+ota_0,      app,  ota_0,    0x20000,  0x1C0000,
+ota_1,      app,  ota_1,    0x1E0000, 0x1C0000,

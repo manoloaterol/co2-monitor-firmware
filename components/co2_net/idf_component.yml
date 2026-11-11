@@ -1,0 +1,9 @@
+dependencies:
+  # The code follows the IDF 6 layout; a 5.x build stops here with a clear
+  # message instead of failing later on missing components.
+  idf: ">=6.0"
+  # Not part of the core IDF (mdns since v5.x, mqtt since v6.0): they are
+  # pulled from the component registry, so the first build after adding one
+  # needs network access.
+  espressif/mdns: "^1.2"
+  espressif/mqtt: "^1.1"

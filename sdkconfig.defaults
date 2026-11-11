@@ -1,0 +1,92 @@
+# Project configuration that cannot be regenerated.
+#
+# sdkconfig is in .gitignore because menuconfig rewrites it with per-machine
+# settings. What actually defines the device lives here: if someone deletes
+# their sdkconfig, idf.py rebuilds it from this file.
+
+# --- Chip ---
+CONFIG_IDF_TARGET="esp32s2"
+
+# --- Flash: 4 MB ---
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
+
+# --- Partitions: two apps for OTA. See partitions.csv ---
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# --- PSRAM ---
+# The display frame buffer (240x280x2 = 131 KB) lives here, with
+# EXT_RAM_BSS_ATTR. Without PSRAM it does not fit alongside the Wi-Fi stack.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_QUAD=y
+CONFIG_SPIRAM_TYPE_AUTO=y
+CONFIG_SPIRAM_SPEED_40M=y
+CONFIG_SPIRAM_BOOT_INIT=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_ALLOW_BSS_SEG_EXTERNAL_MEMORY=y
+CONFIG_SPIRAM_ALLOW_STACK_EXTERNAL_MEMORY=y
+# Internal reserve for DMA and for small allocations, which would be slow in PSRAM.
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=32768
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+
+# --- Wi-Fi memory ---
+# Wi-Fi and LWIP allocate from PSRAM instead of internal RAM. Internal
+# DMA-capable RAM is the scarce resource on this board: the frame buffer lives
+# in PSRAM, so every display update needs internal memory to reach the SPI bus,
+# and Wi-Fi asks for its buffers when it associates, not at init. Without this
+# the display transfer fails with the radio on.
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+#
+# The TX buffers stay static: IDF only offers dynamic ones without
+# SPIRAM_USE_MALLOC, and ESP_WIFI_TX_BUFFER_TYPE is derived from that choice,
+# so it cannot be set from here.
+
+# --- OTA ---
+# The bootloader marks a freshly flashed app as "pending verify". If it does not
+# confirm itself healthy before the next reboot, the previous one is restored.
+# Without this, a bad update over Wi-Fi means the device needs a cable, which is
+# the one thing OTA is supposed to avoid.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# --- Console ---
+# Over native USB CDC, which frees GPIO 43 and 44 (U0TXD/U0RXD) for the
+# joystick.
+CONFIG_ESP_CONSOLE_USB_CDC=y
+
+# --- TLS, for mqtts:// ---
+# mbedTLS takes ~20 KB of record buffers per connection plus more during the
+# handshake. Kept in PSRAM for the same reason as the Wi-Fi buffers above: in
+# internal RAM it would starve the display transfer. Slower, but a handshake per
+# connection and a record every 20 s do not notice.
+CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+# Only the roots most sites chain to, instead of the full Mozilla list: it
+# still covers the cloud brokers and Let's Encrypt in a fraction of the flash.
+# A broker with its own CA is handled by pasting that CA on the setup page.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y
+
+# --- Power ---
+# Frequency scaling between 80 MHz and the default CPU clock. The limits are
+# set at startup by esp_pm_configure(), see main.c; this only builds it in.
+CONFIG_PM_ENABLE=y
+
+# --- Unused features, left out to save flash ---
+# WPA2-Enterprise (EAP) and WPA3 for the setup access point, which is open.
+CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT=n
+CONFIG_ESP_WIFI_SOFTAP_SAE_SUPPORT=n
+# MQTT over TCP or TLS, never over websockets.
+CONFIG_MQTT_TRANSPORT_WEBSOCKET=n
+CONFIG_WS_TRANSPORT=n
+# Nothing here serves TLS.
+CONFIG_MBEDTLS_TLS_CLIENT_ONLY=y
+# The network is IPv4 only.
+CONFIG_LWIP_IPV6=n
+# mDNS only announces the device: no console, no browsing, no Ethernet.
+CONFIG_MDNS_ENABLE_CONSOLE_CLI=n
+CONFIG_MDNS_ENABLE_BROWSE=n
+CONFIG_MDNS_PREDEF_NETIF_ETH=n
+
+# --- Misc ---
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=5

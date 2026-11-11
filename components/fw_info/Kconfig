@@ -1,0 +1,11 @@
+menu "CO2 monitor"
+
+    config CO2_HW_REVISION
+        string "Hardware revision"
+        default "rev2"
+        help
+            Revision of the board this firmware is built for. It cannot be
+            read from the hardware, so it is stamped at build time and shown
+            on the boot screen, the setup page and the MQTT info topic.
+
+endmenu

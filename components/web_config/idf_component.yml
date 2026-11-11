@@ -1,0 +1,3 @@
+dependencies:
+  # Out of the core IDF since v6.0, like mqtt in co2_net.
+  espressif/cjson: "^1.7.19"

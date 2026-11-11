@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CO2 Monitor</title>
+<style>
+:root{--bg:#16181c;--card:#1e2128;--line:#2e323b;--fg:#e6e8ec;--dim:#9aa1ad;--ok:#76b043;--accent:#f2d02e;--bad:#e4707a}
+*{box-sizing:border-box}
+body{margin:0;padding:16px 16px 0;background:var(--bg);color:var(--fg);
+     font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:30rem;margin:0 auto}
+header{display:flex;align-items:center;gap:.7rem;margin:.2rem 0 1rem}
+header svg{height:1.9rem;width:auto;flex:none;color:var(--fg)}
+h1{font-size:1.3rem;margin:0;white-space:nowrap}
+#lang{margin-left:auto;display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+#lang button{width:auto;margin:0;padding:.25rem .55rem;border-radius:0;background:transparent;
+  color:var(--dim);font-size:.8rem;font-weight:600}
+#lang button[aria-pressed=true]{background:var(--line);color:var(--fg)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:.8rem}
+label{display:block;margin:.8rem 0 .25rem;font-size:.85rem;color:var(--dim)}
+input[type=text],input[type=password],input[type=number],select,textarea{
+  width:100%;padding:.6rem .7rem;background:#14161a;color:var(--fg);
+  border:1px solid var(--line);border-radius:8px;font-size:1rem}
+textarea{font:.75rem/1.3 ui-monospace,Menlo,monospace;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.row{display:flex;gap:.6rem}.row>*{flex:1;min-width:0}
+.check{display:flex;align-items:center;gap:.5rem;margin-top:1rem}
+.check input{width:1.1rem;height:1.1rem;accent-color:var(--ok)}
+.check label{margin:0;color:var(--fg);font-size:1rem}
+button{width:100%;margin-top:1.4rem;padding:.75rem;border:0;border-radius:8px;
+  background:var(--ok);color:#0d0f12;font-size:1rem;font-weight:600}
+button:disabled{opacity:.5}
+button.ghost{background:transparent;color:var(--dim);border:1px solid var(--line);
+  margin-top:.6rem;font-weight:400}
+.hint{font-size:.78rem;color:var(--dim);margin:.3rem 0 0}
+code{background:#14161a;padding:.1rem .3rem;border-radius:4px;font-size:.85em}
+
+/* Sections fold so the page opens short; the summary line says what each
+   one holds without opening it. */
+details.card{padding:0}
+details.card>summary{list-style:none;cursor:pointer;padding:14px 16px;display:flex;
+  align-items:baseline;gap:.6rem}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::after{content:"›";margin-left:auto;color:var(--dim);
+  transform:rotate(90deg);transition:transform .15s}
+details.card[open]>summary::after{transform:rotate(-90deg)}
+details.card>summary b{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--dim);font-weight:600;flex:none}
+details.card>summary span{font-size:.85rem;color:var(--fg);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;min-width:0}
+details.card>div{padding:0 16px 16px;border-top:1px solid var(--line)}
+details.sub{margin-top:1.2rem;border:1px solid var(--line);border-radius:8px}
+details.sub>summary{cursor:pointer;padding:.6rem .7rem;font-size:.9rem;color:var(--dim)}
+details.sub>div{padding:0 .7rem .7rem}
+
+#live .big{display:flex;align-items:baseline;gap:.5rem}
+#lco2{font-size:3rem;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+#live .unit{color:var(--dim)}
+#lenv{margin-left:auto;text-align:right;font-variant-numeric:tabular-nums}
+#live dl{display:grid;grid-template-columns:auto 1fr;gap:.15rem .8rem;margin:1rem 0 0;font-size:.85rem}
+#live dt{color:var(--dim)}#live dd{margin:0;overflow-wrap:anywhere}
+#live.stale #lco2,#live.stale #lenv{opacity:.35}
+#lsensor.bad{color:var(--bad)}
+.dot{display:inline-block;width:.55rem;height:.55rem;border-radius:50%;margin-right:.35rem;
+  background:var(--dim);vertical-align:.05rem}
+.dot.on{background:var(--ok)}.dot.off{background:var(--bad)}
+
+input[type=range]{width:100%;accent-color:var(--ok)}
+.rv{float:right;color:var(--fg);font-variant-numeric:tabular-nums}
+dl.ver{display:grid;grid-template-columns:auto 1fr;gap:.1rem .8rem;margin:.4rem 0 0;font-size:.85rem}
+ol.steps{margin:.8rem 0 0;padding-left:1.2rem;font-size:.85rem}
+ol.steps li{margin-bottom:.35rem}
+.warn{color:var(--accent)}
+dl.ver dt{color:var(--dim)}dl.ver dd{margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.lic{font-size:.8rem;color:var(--dim)}.lic h4{margin:1rem 0 .3rem;font-size:.85rem}
+.lic pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.7rem;margin:0}
+
+#bar{height:6px;background:#14161a;border-radius:3px;margin-top:.8rem;
+  overflow:hidden;display:none}
+#fill{height:100%;width:0;background:var(--ok);transition:width .2s}
+input[type=file]{width:100%;margin-top:.8rem;color:var(--dim);font-size:.9rem}
+
+/* The save button stays in reach however long the open sections get. */
+.actions{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 30%);
+  padding:1.2rem 0 16px;margin-top:-.4rem}
+.actions button{margin-top:0}
+#msg{margin-bottom:.6rem;padding:.7rem;border-radius:8px;display:none;font-size:.9rem}
+#msg.ok{display:block;background:#1d2a16;color:var(--ok)}
+#msg.err{display:block;background:#2a1717;color:var(--bad)}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <!-- The letters are cut out of the plate, so they take the page background
+       and the plate takes the text colour. -->
+  <svg viewBox="44 245 647 229" role="img" aria-label="MAT"><path
+    transform="translate(0 728) scale(.1 -.1)" fill="currentColor" fill-rule="evenodd"
+    d="M6830 4805 c21 -12 44 -39 58 -65 l22 -45 -2 -1027 -3 -1026 -31 -39 c-18 -22 -47 -43 -68 -51 -30 -10 -675 -12 -3151 -10 l-3114 3 -28 21 c-15 11 -38 36 -51 54 l-22 33 0 1031 c0 1004 1 1032 20 1063 22 37 58 63 103 73 17 5 1427 7 3132 7 3092 -2 3100 -2 3135 -22z M787 4519 c-48 -28 -47 -18 -47 -815 l0 -746 34 -34 34 -34 141 0 141 0 32 29 33 29 5 582 5 581 199 -558 c110 -307 208 -572 218 -590 11 -18 35 -42 53 -53 32 -20 46 -21 164 -18 l130 3 35 34 c41 40 31 15 272 685 l179 499 5 -579 c3 -318 9 -587 14 -597 18 -37 59 -47 200 -47 l136 0 32 29 33 29 3 749 c2 549 -1 755 -9 776 -23 56 -29 57 -328 57 -261 0 -275 -1 -308 -21 -18 -12 -42 -37 -52 -58 -9 -20 -91 -251 -182 -513 -90 -263 -166 -478 -169 -478 -3 0 -80 215 -170 477 -91 263 -173 494 -182 513 -10 19 -33 45 -51 58 -33 22 -39 22 -308 22 -167 0 -281 -5 -292 -11z M3865 4520 c-265 -39 -452 -174 -523 -375 -28 -80 -312 -1158 -312 -1185 0 -11 11 -32 25 -45 23 -24 28 -25 172 -25 216 0 220 3 283 235 22 82 44 153 48 157 5 5 188 7 408 6 l399 -3 5 -165 c3 -91 9 -173 13 -182 20 -41 50 -48 197 -48 155 0 187 9 208 55 9 19 12 215 12 775 l0 748 -26 31 -26 31 -416 -1 c-230 -1 -439 -5 -467 -9z m505 -610 l0 -300 -365 0 c-201 0 -365 2 -365 5 0 32 117 419 135 447 47 71 115 121 190 139 17 4 114 7 218 8 l187 1 0 -300z M5037 4519 c-33 -19 -47 -64 -47 -153 0 -80 2 -88 29 -118 l29 -33 281 -3 281 -3 0 -620 c0 -561 2 -624 17 -649 25 -44 52 -50 206 -50 152 0 170 6 196 57 8 15 11 205 11 642 l0 621 271 0 c179 0 278 4 292 11 48 25 57 48 57 152 0 96 -1 99 -29 128 l-29 29 -774 0 c-506 -1 -779 -4 -791 -11z"/></svg>
+  <h1 data-i18n-html="title"></h1>
+  <div id="lang" role="group" aria-label="Language">
+    <button type="button" data-lang="en">EN</button>
+    <button type="button" data-lang="es">ES</button>
+  </div>
+</header>
+
+<section class="card stale" id="live" aria-live="polite">
+  <div class="big">
+    <span id="lco2">—</span><span class="unit">ppm</span>
+    <span id="lenv"><span id="lt">—</span> &deg;C<br><span id="lh">—</span> %</span>
+  </div>
+  <dl>
+    <dt data-i18n="live_sensor"></dt><dd id="lsensor">—</dd>
+    <dt>Wi-Fi</dt><dd id="lwifi">—</dd>
+    <dt>MQTT</dt><dd id="lmqtt">—</dd>
+    <dt data-i18n="live_uptime"></dt><dd id="lup">—</dd>
+  </dl>
+</section>
+
+<form id="f" autocomplete="off">
+
+<details class="card" id="s-net">
+  <summary><b data-i18n="sec_net"></b><span id="sum-net"></span></summary>
+  <div>
+    <div class="check">
+      <input type="checkbox" id="wen" checked>
+      <label for="wen" data-i18n="wifi_on"></label>
+    </div>
+    <p class="hint" data-i18n="wifi_on_hint"></p>
+
+    <label for="ssid">Wi-Fi</label>
+    <div class="row">
+      <select id="ssid"></select>
+    </div>
+    <button type="button" class="ghost" id="rescan" data-i18n="rescan"></button>
+
+    <label for="pass" data-i18n="password"></label>
+    <input type="password" id="pass" maxlength="64">
+  </div>
+</details>
+
+<details class="card" id="s-mqtt">
+  <summary><b>MQTT</b><span id="sum-mqtt"></span></summary>
+  <div>
+    <label for="uri">Broker</label>
+    <input type="text" id="uri" maxlength="127" placeholder="mqtt://192.168.1.10:1883">
+    <p class="hint" data-i18n-html="uri_hint"></p>
+    <div class="row">
+      <div>
+        <label for="user" data-i18n="user"></label>
+        <input type="text" id="user" maxlength="64">
+      </div>
+      <div>
+        <label for="mpass" data-i18n="password"></label>
+        <input type="password" id="mpass" maxlength="64">
+      </div>
+    </div>
+    <div class="check" id="mpclearbox">
+      <input type="checkbox" id="mpclear">
+      <label for="mpclear" data-i18n="pass_clear"></label>
+    </div>
+
+    <div class="check">
+      <input type="checkbox" id="disc">
+      <label for="disc" data-i18n="disc"></label>
+    </div>
+    <div id="hapbox">
+      <label for="hap" data-i18n="hap"></label>
+      <input type="text" id="hap" maxlength="31" spellcheck="false" placeholder="homeassistant">
+      <p class="hint" data-i18n="hap_hint"></p>
+    </div>
+
+    <details class="sub" id="s-adv">
+      <summary data-i18n="adv"></summary>
+      <div>
+        <label for="topic" data-i18n="topic"></label>
+        <input type="text" id="topic" maxlength="63" spellcheck="false">
+        <p class="hint" data-i18n-html="topic_hint"></p>
+
+        <div class="check">
+          <input type="checkbox" id="retain">
+          <label for="retain" data-i18n="retain"></label>
+        </div>
+        <p class="hint" id="retain_hint"></p>
+
+        <div id="cabox">
+          <p class="hint" id="tlsunused" data-i18n-html="tls_unused"></p>
+          <label for="ca" data-i18n="ca"></label>
+          <textarea id="ca" rows="5" spellcheck="false"
+            placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+          <p class="hint" data-i18n-html="ca_hint"></p>
+
+          <label for="ccert" data-i18n="ccert"></label>
+          <textarea id="ccert" rows="5" spellcheck="false"
+            placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+          <label for="ckey" data-i18n="ckey"></label>
+          <textarea id="ckey" rows="3" spellcheck="false"></textarea>
+          <p class="hint" data-i18n="ccert_hint"></p>
+        </div>
+      </div>
+    </details>
+  </div>
+</details>
+
+<details class="card" id="s-disp">
+  <summary><b data-i18n="sec_disp"></b><span id="sum-disp"></span></summary>
+  <div>
+    <label for="blf"><span data-i18n="bl_full"></span> <span class="rv" id="blfv"></span></label>
+    <input type="range" id="blf" min="5" max="100" step="1">
+    <label for="bld"><span data-i18n="bl_dim"></span> <span class="rv" id="bldv"></span></label>
+    <input type="range" id="bld" min="0" max="100" step="1">
+    <p class="hint" data-i18n="bl_hint"></p>
+
+    <label for="slang" data-i18n="slang"></label>
+    <select id="slang">
+      <option value="en">English</option>
+      <option value="es">Español</option>
+    </select>
+    <p class="hint" data-i18n="slang_hint"></p>
+
+    <div class="check">
+      <input type="checkbox" id="led" checked>
+      <label for="led" data-i18n="led"></label>
+    </div>
+    <p class="hint" data-i18n="led_hint"></p>
+
+    <div class="row">
+      <div>
+        <label for="bars" data-i18n="bars"></label>
+        <select id="bars">
+          <option>20</option><option>25</option><option>40</option>
+          <option>50</option><option>100</option>
+        </select>
+      </div>
+      <div>
+        <label for="bars_s" data-i18n="bars_s"></label>
+        <select id="bars_s">
+          <option value="20">20 s</option><option value="30">30 s</option>
+          <option value="60">1 min</option><option value="120">2 min</option>
+          <option value="300">5 min</option>
+        </select>
+      </div>
+    </div>
+    <p class="hint" id="window"></p>
+    <p class="hint" data-i18n="chart_hint"></p>
+  </div>
+</details>
+
+<details class="card" id="s-sens">
+  <summary><b data-i18n="sec_sens"></b><span id="sum-sens"></span></summary>
+  <div>
+    <label for="alt" data-i18n="alt"></label>
+    <input type="number" id="alt" min="0" max="65535">
+    <p class="hint" data-i18n-html="alt_hint"></p>
+
+    <label for="diff" data-i18n-html="diff"></label>
+    <input type="number" id="diff" step="0.01" placeholder="0.00">
+    <p class="hint" id="cur"></p>
+    <p class="hint" data-i18n-html="diff_hint1"></p>
+    <p class="hint" data-i18n-html="diff_hint2"></p>
+  </div>
+</details>
+
+<details class="card" id="s-cal">
+  <summary><b data-i18n="sec_cal"></b><span id="sum-cal"></span></summary>
+  <div>
+    <ol class="steps">
+      <li data-i18n-html="cal_s1"></li>
+      <li data-i18n-html="cal_s2"></li>
+      <li data-i18n-html="cal_s3"></li>
+      <li data-i18n-html="cal_s4"></li>
+      <li data-i18n-html="cal_s5"></li>
+    </ol>
+    <p class="hint" data-i18n-html="cal_skip"></p>
+
+    <p class="hint" id="calalt"></p>
+    <p class="hint warn" id="calasc" style="display:none" data-i18n="cal_asc"></p>
+
+    <label for="calref" data-i18n="cal_ref"></label>
+    <input type="number" id="calref" min="400" max="2000" step="1" value="430">
+    <p class="hint" id="calstate"></p>
+    <p class="hint" id="calprev"></p>
+    <button type="button" class="ghost" id="calgo" data-i18n="cal_go"></button>
+
+    <label data-i18n="cal_last_l"></label>
+    <p class="hint" id="callast"></p>
+    <button type="button" class="ghost" id="calundo" data-i18n="cal_undo"></button>
+    <p class="hint" data-i18n="cal_undo_hint"></p>
+    <p class="hint" data-i18n="cal_keep"></p>
+  </div>
+</details>
+
+<details class="card" id="s-sys">
+  <summary><b data-i18n="sec_sys"></b><span id="sum-sys"></span></summary>
+  <div>
+    <label for="name" data-i18n="name"></label>
+    <input type="text" id="name" maxlength="47">
+    <p class="hint" data-i18n="name_hint"></p>
+
+    <label data-i18n="versions"></label>
+    <dl class="ver">
+      <dt>Firmware</dt><dd id="vfw">—</dd>
+      <dt>Hardware</dt><dd id="vhw">—</dd>
+      <dt data-i18n="v_sensor"></dt><dd id="vsens">—</dd>
+    </dl>
+
+    <label for="fw" data-i18n="ota"></label>
+    <input type="file" id="fw" accept=".bin">
+    <p class="hint" data-i18n-html="ota_hint"></p>
+    <div id="bar"><div id="fill"></div></div>
+    <button type="button" class="ghost" id="flash" data-i18n="flash"></button>
+    <button type="button" class="ghost" id="reboot" data-i18n="reboot"></button>
+
+    <!-- Third-party notices. They must travel with the binary (BSD-3 asks so
+         for the Sensirion driver), so they live in the firmware itself, not
+         only behind a link. Legal text stays in English in both languages. -->
+    <details class="sub" id="s-lic">
+      <summary data-i18n="licences"></summary>
+      <div class="lic">
+<p>This firmware is free software, released under the GNU General Public
+License v3.0 (<a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPL-3.0</a>).
+It comes with ABSOLUTELY NO WARRANTY. It includes the third-party software
+below, whose notices are reproduced as their licences require.</p>
+
+<h4>Sensirion SCD30 driver (BSD 3-Clause)</h4>
+<pre>Copyright (c) 2018, 2022, Sensirion AG
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of Sensirion AG nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.</pre>
+
+<h4>Display initialisation values (Apache 2.0)</h4>
+<pre>Copyright [sangsq] (sang93@qq.com)
+Licensed under the Apache License, Version 2.0.</pre>
+<p>From <a href="https://github.com/sangyuxiaowu/NV3030B" target="_blank" rel="noopener">Sang.IoT.NV3030B</a>,
+rewritten as a C table. Licence text:
+<a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">apache.org/licenses/LICENSE-2.0</a>.</p>
+
+<h4>Fonts</h4>
+<p>Goldman, Copyright 2018 The Goldman Project Authors. Russo One, Copyright
+(c) 2011-2012 Jovanny Lemonad, Reserved Font Name "Russo". Both under the
+<a href="https://openfontlicense.org" target="_blank" rel="noopener">SIL Open Font License 1.1</a>.
+6×9 from X11 misc-fixed, public domain.</p>
+
+<h4>ESP-IDF and components</h4>
+<p>Built on Espressif's ESP-IDF, with its mqtt and mdns components, all
+under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener">Apache License 2.0</a>.</p>
+
+<h4>cJSON (MIT)</h4>
+<pre>Copyright (c) 2009-2017 Dave Gamble and cJSON contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.</pre>
+      </div>
+    </details>
+  </div>
+</details>
+
+<div class="actions">
+  <div id="msg"></div>
+  <button type="submit" id="save" data-i18n="save"></button>
+</div>
+</form>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+//---- translations -----------------------------------------------------------
+// Keys used with data-i18n-html may carry markup; everything else is set as
+// plain text. Entries that are functions build a sentence around values.
+const T = {
+en: {
+  title: 'CO<sub>2</sub> Monitor',
+  live_sensor: 'Sensor', live_uptime: 'Uptime',
+  sensor_ok: v => 'reading' + (v ? ` · SCD30 ${v}` : ''),
+  sensor_bad: 'no readings: check the sensor wiring',
+  no_answer: 'the meter is not answering',
+  setup_mode: 'setup mode (own access point)',
+  connecting: 'connecting…',
+  mqtt_unused: 'not in use',
+  mqtt_on: h => `connected to ${h}`,
+  mqtt_off: h => `cannot reach ${h}`,
+  sig_good: 'good', sig_fair: 'fair', sig_weak: 'weak',
+
+  sec_net: 'Network', sec_disp: 'Display', sec_sens: 'Sensor', sec_sys: 'System',
+  wifi_on: 'Wi-Fi enabled',
+  wifi_on_hint: 'With Wi-Fi off the meter stops transmitting altogether: no network, no access point and no page. To get back, hold the centre button for 3 seconds.',
+  scanning: 'Scanning…', no_networks: 'No networks',
+  rescan: 'Scan again',
+  password: 'Password', unchanged: '(unchanged)',
+  uri_hint: '<code>mqtt://</code> unencrypted, usually on port 1883, or <code>mqtts://</code> with TLS, usually on 8883. Empty publishes nothing. Changing the broker\'s host clears the stored password unless you type it again.',
+  user: 'User',
+  pass_clear: 'Clear the stored password',
+  disc: 'Home Assistant auto-discovery',
+  hap: 'Discovery prefix',
+  hap_hint: 'Only change it if Home Assistant uses a different one. The entries under the previous prefix are removed when the meter restarts.',
+  adv: 'Advanced: topics and TLS',
+  topic: 'Topic base',
+  topic_hint: '<code>/co2</code>, <code>/temperature</code>, <code>/humidity</code>, <code>/state</code> (all three as JSON), <code>/status</code> and <code>/info</code> hang off it. Empty uses the default, which carries the MAC and does not clash with other devices.',
+  retain: 'Retain readings',
+  retain_hint: p => `A new subscriber gets the last value at once instead of waiting for the next reading (every ${p}). When turned off, the meter clears the retained values as it restarts.`,
+  tls_unused: 'None of this is used with <code>mqtt://</code>. Empty the client certificate to delete its key as well.',
+  ca: 'CA certificate (optional)',
+  ca_hint: 'Empty checks the broker against the public authorities, which is right for cloud brokers and Let\'s Encrypt certificates. Paste the broker\'s <code>ca.crt</code> in PEM here if it uses its own CA.',
+  ccert: 'Client certificate (optional)',
+  ckey: 'Client private key',
+  ccert_hint: 'For brokers that identify the device by certificate instead of password, such as Azure Event Grid or AWS IoT. Both in PEM, and the key without a passphrase. The key is never shown again: leave it blank to keep the stored one. Emptying the certificate deletes both.',
+
+  bl_full: 'Brightness', bl_dim: 'Dimmed brightness', off: 'off',
+  bl_hint: 'Dimmed is what a short press of the centre button gives; at 0 the screen goes off. Brightness is applied on save, without a restart, and it is the largest share of the power draw.',
+  slang: 'Screen language',
+  slang_hint: 'The text the meter itself shows. Applied on save, without a restart. This page has its own selector at the top.',
+  led: 'Status LED',
+  led_hint: 'Steady when connected, blinking while it waits for the network or, if one is set, the broker. Turn it off for a bedroom; it still shows in setup mode. Applied on save, without a restart.',
+  bars: 'Chart bars', bars_s: 'Each bar',
+  window: (b, s, w) => `${b} bars × ${s} = <b>${w}</b> of history · publishes every ${s}`,
+  chart_hint: 'Each bar is the average of the readings over that time, and that average is also what goes out over MQTT. Changing the chart restarts the meter and clears its history.',
+
+  alt: 'Altitude (m)',
+  alt_hint: 'CO<sub>2</sub> readings depend on air pressure. Below about 200 m the correction is smaller than the sensor\'s own error.',
+  diff: 'Calibrate temperature: measured difference (&deg;C)',
+  cur: (o, a) => `The sensor now holds a correction of <b>${o} &deg;C</b> and an altitude of <b>${a} m</b>.`,
+  diff_hint1: 'With the case closed and 10 minutes running, subtract <b>what the meter shows minus your thermometer</b>, in degrees. If the meter says 27.5 and the thermometer 25.0, enter <b>2.5</b>.',
+  diff_hint2: 'It is <b>added</b> to the current correction, not written in its place, so leave the field empty unless you are calibrating. A negative value undoes an excessive correction.',
+
+  name: 'Name', name_hint: 'What Home Assistant shows. Empty uses the default name with the MAC.',
+  versions: 'Versions', v_sensor: 'SCD30 sensor', unknown: 'not answering',
+  licences: 'Licences',
+  ota: 'Firmware update',
+  ota_hint: 'Upload the project\'s <code>.bin</code>. Nothing is activated until the image has arrived whole and been validated, so an interrupted upload leaves the running firmware alone. If the new version does not start properly, the previous one comes back on its own at the next restart.',
+  flash: 'Upload and restart', reboot: 'Restart without saving',
+  save: 'Save',
+
+  sum_wifi_off: 'Wi-Fi disabled', sum_no_net: 'no network', sum_unset: 'not configured',
+  sum_disp: (p, b, s) => `brightness ${p} % · ${b} × ${s}`,
+  sum_sens: (a, o) => `${a} m · correction ${o} °C`,
+  sec_cal: 'CO₂ calibration',
+  cal_s1: '<b>Set the altitude first</b>, in Sensor, and save: it reaches the sensor on the restart that follows. Calibrate after that restart, never before, or the calibration will not match once it applies.',
+  cal_s2: 'Take the meter <b>outdoors</b>, or to a wide-open window with a draught, in the shade and away from traffic, chimneys and boilers. Best at midday or in the afternoon with some wind; avoid the night and dawn, when CO<sub>2</sub> builds up near the ground.',
+  cal_s3: 'Keep a metre or two away and <b>do not breathe towards it</b>: exhaled air carries about 40,000 ppm. Follow the reading from your phone.',
+  cal_s4: '<b>Wait until the reading settles.</b> The button unlocks after 2 minutes of steady readings; 5 to 10 minutes is better.',
+  cal_s5: 'Outdoor air is about <b>430 ppm</b> (2026), somewhat more near a city; for other years, the latest value from <a href="https://gml.noaa.gov/ccgg/trends/" target="_blank" rel="noopener">NOAA</a>. If you have a reference meter right next to it, use its value instead.',
+  cal_skip: 'If the meter already reads between about 400 and 470 outdoors, it is within its tolerance and calibrating adds little.',
+  cal_asc: 'The sensor has automatic self-calibration switched on: over the following days it will override this calibration.',
+  cal_alt_ok: a => `Altitude in the sensor: ${a} m.`,
+  cal_alt_zero: 'Altitude in the sensor: 0 m. If you are not at sea level, set it in Sensor before calibrating.',
+  cal_alt_pending: (f, a) => `The altitude in the form (${f} m) is not the one in the sensor (${a} m): save, and calibrate after the restart.`,
+  cal_ref: 'Reference (ppm)',
+  cal_nosensor: 'No readings from the sensor.',
+  cal_running: r => `Measuring for ${r}: it needs 2 minutes of unbroken readings.`,
+  cal_unsteady: (sp, mx) => `The readings vary by ${sp} ppm over 2 minutes; wait until they vary by less than ${mx}.`,
+  cal_steady: (a, sp) => `Steady: average of the last 2 minutes <b>${a} ppm</b>, varying ${sp} ppm.`,
+  cal_prev: (a, d) => `The sensor reads ${a} ppm: every reading will be corrected by <b>${d} ppm</b>.`,
+  cal_far: (d, mx) => `A correction of ${d} ppm is more than ${mx}. That only makes sense for a sensor that is far off from the start, set against outdoor air or a calibrated meter right next to it; otherwise the air is most likely not a good reference.`,
+  cal_badref: 'The reference must be between 400 and 2000 ppm.',
+  cal_go: 'Calibrate now',
+  cal_confirm: (a, r, d) => `The sensor reads ${a} ppm and will be set to ${r} ppm (${d} ppm). Every reading from now on changes by that much. Continue?`,
+  cal_confirm_wide: (a, r, d) => `Wide calibration: the sensor reads ${a} ppm and will be set to ${r} ppm (${d} ppm). Do it only with a reference you trust: outdoor air or a calibrated meter right next to it. To undo it later the air has to hold enough CO₂: the reading minus this correction must stay at 400 ppm or more, as indoors with people around. Continue?`,
+  cal_done: (b, r) => `Calibrated: ${b} → ${r} ppm.`,
+  cal_last_l: 'Last calibration',
+  cal_last: (w, b, r, d) => `${w}: it read ${b} ppm and was set to ${r} ppm (${d} ppm).`,
+  cal_none: 'None recorded: the factory calibration, or one made outside this page.',
+  cal_when_unknown: 'Date unknown',
+  cal_undo: 'Undo last calibration',
+  cal_undo_hint: 'Applies the opposite correction. Unlike calibrating, it works in any steady air, indoors too.',
+  cal_keep: 'The correction is stored in the sensor and survives power cuts. There is no way back to the exact factory calibration, only another calibration or the undo above.',
+  cal_undo_confirm: d => `A correction of ${d} ppm will be applied, the opposite of the last calibration. Continue?`,
+  cal_undone: 'Last calibration undone.',
+  cal_undo_range: ' It cannot be undone in this air: the opposite correction would need a reference outside 400–2000 ppm. It can in air where the reading is higher, indoors for instance.',
+  cal_unrecorded: ' It could not be recorded, so it cannot be undone from here.',
+  cal_failed: 'Calibration failed: ',
+  cal_err: {
+    sensor: 'the sensor is not giving readings',
+    altitude: 'the altitude saved is not in the sensor yet; restart first',
+    unstable: 'the readings are not steady yet',
+    nothing_to_undo: 'there is no calibration to undo',
+    range: 'the reference must be between 400 and 2000 ppm',
+    too_far: 'the correction is too large for this to be good reference air',
+    timeout: 'the sensor did not answer in time; check the reading before trying again',
+    busy: 'another calibration is under way',
+    refused: 'the sensor refused it',
+  },
+  sum_cal_none: 'factory',
+  sum_cal: w => `calibrated ${w}`,
+
+  err_topic: 'the topic base', err_hap: 'the discovery prefix',
+  err_wild: w => `${w} cannot contain + # " or \\`,
+  err_empty: w => `${w} cannot have empty levels`,
+  err_dollar: w => `${w} cannot start with $`,
+  err_key: 'the client certificate is missing its private key',
+  saved_applied: 'Saved and applied.',
+  saved_restarting: 'Saved. Restarting…',
+  saved_restarted: 'Saved and restarted.',
+  saved_radio_off: 'Saved. The meter restarts without Wi-Fi: this page will no longer be available.',
+  saved_new_net: (n, u) => `Saved. The meter restarts and joins ${n}. Find it at ${u}`,
+  not_back: u => `The meter is not answering yet. Try ${u}`,
+  save_failed: 'Could not save: ',
+  restarting: 'Restarting…', restarted: 'Restarted.',
+  restart_failed: 'Could not restart: ',
+  pick_bin: 'Choose a .bin file first',
+  uploading: k => `Uploading ${k} kB…`,
+  updated: 'Updated. Restarting…',
+  updated_back: v => `Updated and restarted: now running ${v}. If that is the previous version, the new one failed to start and was rolled back.`,
+  load_failed: 'Could not read the settings from the meter. Retrying…',
+  upload_failed: 'Failed: ',
+  upload_cut: 'The upload was cut off. The current firmware has not been touched.'
+},
+es: {
+  title: 'Medidor de CO<sub>2</sub>',
+  live_sensor: 'Sensor', live_uptime: 'Encendido',
+  sensor_ok: v => 'midiendo' + (v ? ` · SCD30 ${v}` : ''),
+  sensor_bad: 'sin lecturas: revisa la conexión del sensor',
+  no_answer: 'sin respuesta del medidor',
+  setup_mode: 'modo configuración (punto de acceso propio)',
+  connecting: 'conectando…',
+  mqtt_unused: 'sin usar',
+  mqtt_on: h => `conectado a ${h}`,
+  mqtt_off: h => `sin conexión con ${h}`,
+  sig_good: 'buena', sig_fair: 'aceptable', sig_weak: 'débil',
+
+  sec_net: 'Red', sec_disp: 'Pantalla', sec_sens: 'Sensor', sec_sys: 'Sistema',
+  wifi_on: 'Wi-Fi activada',
+  wifi_on_hint: 'Al desactivarla el medidor deja de emitir por completo: sin red, sin punto de acceso y sin esta página. Para volver, mantén pulsado el botón central 3 segundos.',
+  scanning: 'Buscando redes…', no_networks: 'Sin redes',
+  rescan: 'Volver a buscar',
+  password: 'Contraseña', unchanged: '(sin cambios)',
+  uri_hint: '<code>mqtt://</code> sin cifrar, normalmente en el puerto 1883, o <code>mqtts://</code> con TLS, normalmente en el 8883. Vacío no publica nada. Al cambiar el host del broker se borra la contraseña guardada, salvo que la escribas de nuevo.',
+  user: 'Usuario',
+  pass_clear: 'Borrar la contraseña guardada',
+  disc: 'Alta automática en Home Assistant',
+  hap: 'Prefijo de Discovery',
+  hap_hint: 'Solo hay que cambiarlo si Home Assistant usa otro. Las altas del prefijo anterior se borran al reiniciar el medidor.',
+  adv: 'Avanzado: topics y TLS',
+  topic: 'Topic base',
+  topic_hint: 'De aquí cuelgan <code>/co2</code>, <code>/temperature</code>, <code>/humidity</code>, <code>/state</code> (las tres en JSON), <code>/status</code> e <code>/info</code>. Vacío usa el de por defecto, que lleva la MAC y no choca con otros aparatos.',
+  retain: 'Retener las lecturas',
+  retain_hint: p => `Quien se suscribe recibe el último valor al momento, en vez de esperar a la siguiente lectura (cada ${p}). Al desactivarlo, el medidor borra los valores retenidos al reiniciar.`,
+  tls_unused: 'Con <code>mqtt://</code> no se usa nada de lo que sigue. Vacía el certificado de cliente para borrar también su clave.',
+  ca: 'Certificado de la CA (opcional)',
+  ca_hint: 'Vacío comprueba el broker contra las autoridades públicas, que es lo que sirve para los brokers en la nube y los certificados de Let\'s Encrypt. Pega aquí el <code>ca.crt</code> en PEM si tu broker usa una CA propia.',
+  ccert: 'Certificado de cliente (opcional)',
+  ckey: 'Clave privada del cliente',
+  ccert_hint: 'Para brokers que identifican al aparato por certificado en vez de por contraseña, como Azure Event Grid o AWS IoT. Ambos en PEM, y la clave sin contraseña. La clave nunca se vuelve a mostrar: déjala en blanco para conservar la guardada. Vaciar el certificado borra los dos.',
+
+  bl_full: 'Brillo', bl_dim: 'Brillo atenuado', off: 'apagada',
+  bl_hint: 'El atenuado es el de la pulsación corta del botón central; a 0 la pantalla se apaga. El brillo se aplica al guardar, sin reiniciar, y es lo que más pesa en el consumo.',
+  slang: 'Idioma de la pantalla',
+  slang_hint: 'El de los textos que muestra el propio medidor. Se aplica al guardar, sin reiniciar. Esta página tiene su propio selector arriba.',
+  led: 'LED de estado',
+  led_hint: 'Fijo con conexión, parpadeando mientras espera a la red o, si hay uno configurado, al broker. Apágalo si el medidor está en un dormitorio; en modo configuración se sigue viendo. Se aplica al guardar, sin reiniciar.',
+  bars: 'Barras de la gráfica', bars_s: 'Cada barra',
+  window: (b, s, w) => `${b} barras × ${s} = <b>${w}</b> de historia · publica cada ${s}`,
+  chart_hint: 'Cada barra es la media de las lecturas de ese tiempo, y esa media es también lo que se publica por MQTT. Cambiar la gráfica reinicia el medidor y vacía el historial.',
+
+  alt: 'Altitud (m)',
+  alt_hint: 'El CO<sub>2</sub> depende de la presión. Por debajo de unos 200 m la corrección es menor que el error del propio sensor.',
+  diff: 'Calibrar temperatura: diferencia medida (&deg;C)',
+  cur: (o, a) => `El sensor guarda ahora <b>${o} &deg;C</b> de corrección y <b>${a} m</b> de altitud.`,
+  diff_hint1: 'Con la caja cerrada y 10 minutos en marcha, resta <b>lo que marca el aparato menos tu termómetro</b>, en grados. Si el aparato dice 27.5 y el termómetro 25.0, escribe <b>2.5</b>.',
+  diff_hint2: 'Se <b>suma</b> a la corrección actual, no la sustituye, así que deja el campo vacío si no vas a calibrar. Un valor negativo deshace una corrección excesiva.',
+
+  name: 'Nombre', name_hint: 'El que ve Home Assistant. Vacío usa el nombre por defecto con la MAC.',
+  versions: 'Versiones', v_sensor: 'Sensor SCD30', unknown: 'no responde',
+  licences: 'Licencias',
+  ota: 'Actualizar firmware',
+  ota_hint: 'Sube el <code>.bin</code> del proyecto. No se activa nada hasta que la imagen ha llegado entera y se ha validado, así que una subida cortada no toca el firmware en marcha. Si la versión nueva no arranca bien, la anterior vuelve sola en el siguiente reinicio.',
+  flash: 'Subir y reiniciar', reboot: 'Reiniciar sin guardar',
+  save: 'Guardar',
+
+  sum_wifi_off: 'Wi-Fi desactivada', sum_no_net: 'sin red', sum_unset: 'sin configurar',
+  sum_disp: (p, b, s) => `brillo ${p} % · ${b} × ${s}`,
+  sum_sens: (a, o) => `${a} m · corrección ${o} °C`,
+  sec_cal: 'Calibración de CO₂',
+  cal_s1: '<b>Fija antes la altitud</b>, en Sensor, y guarda: llega al sensor con el reinicio que sigue. Calibra después de ese reinicio, nunca antes, o la calibración no cuadrará cuando se aplique.',
+  cal_s2: 'Saca el medidor <b>al exterior</b>, o a una ventana abierta de par en par con corriente, a la sombra y lejos de tráfico, chimeneas y calderas. Mejor a mediodía o por la tarde, con algo de viento; evita la noche y el amanecer, cuando el CO<sub>2</sub> se acumula cerca del suelo.',
+  cal_s3: 'Aléjate uno o dos metros y <b>no respires hacia él</b>: el aire que exhalamos lleva unos 40.000 ppm. Sigue la lectura desde el móvil.',
+  cal_s4: '<b>Espera a que la lectura se estabilice.</b> El botón se activa tras 2 minutos de lecturas estables; mejor de 5 a 10 minutos.',
+  cal_s5: 'El aire exterior está en unos <b>430 ppm</b> (2026), algo más cerca de una ciudad; para otros años, el último valor de <a href="https://gml.noaa.gov/ccgg/trends/" target="_blank" rel="noopener">la NOAA</a>. Si tienes un medidor de referencia justo al lado, usa su valor.',
+  cal_skip: 'Si en el exterior el medidor ya marca entre unos 400 y 470, está dentro de su tolerancia y calibrar aporta poco.',
+  cal_asc: 'El sensor tiene activada la autocalibración automática: en los días siguientes sustituirá a esta calibración.',
+  cal_alt_ok: a => `Altitud en el sensor: ${a} m.`,
+  cal_alt_zero: 'Altitud en el sensor: 0 m. Si no estás a nivel del mar, fíjala en Sensor antes de calibrar.',
+  cal_alt_pending: (f, a) => `La altitud del formulario (${f} m) no es la del sensor (${a} m): guarda, y calibra después del reinicio.`,
+  cal_ref: 'Referencia (ppm)',
+  cal_nosensor: 'El sensor no da lecturas.',
+  cal_running: r => `Midiendo desde hace ${r}: hacen falta 2 minutos de lecturas sin cortes.`,
+  cal_unsteady: (sp, mx) => `Las lecturas varían ${sp} ppm en 2 minutos; espera a que varíen menos de ${mx}.`,
+  cal_steady: (a, sp) => `Estable: media de los últimos 2 minutos <b>${a} ppm</b>, con una variación de ${sp} ppm.`,
+  cal_prev: (a, d) => `El sensor marca ${a} ppm: todas las lecturas se corregirán en <b>${d} ppm</b>.`,
+  cal_far: (d, mx) => `Una corrección de ${d} ppm supera ${mx}. Solo tiene sentido con un sensor muy desviado de origen, ajustado con aire exterior o con un medidor calibrado justo al lado; si no, lo más probable es que el aire no sea una buena referencia.`,
+  cal_badref: 'La referencia debe estar entre 400 y 2000 ppm.',
+  cal_go: 'Calibrar ahora',
+  cal_confirm: (a, r, d) => `El sensor marca ${a} ppm y se ajustará a ${r} ppm (${d} ppm). Todas las lecturas a partir de ahora cambian en esa cantidad. ¿Continuar?`,
+  cal_confirm_wide: (a, r, d) => `Calibración amplia: el sensor marca ${a} ppm y se ajustará a ${r} ppm (${d} ppm). Hazla solo con una referencia de confianza: aire exterior o un medidor calibrado justo al lado. Para deshacerla más tarde el aire tendrá que tener bastante CO₂: la lectura menos esta corrección debe quedar en 400 ppm o más, como en interior con gente. ¿Continuar?`,
+  cal_done: (b, r) => `Calibrado: ${b} → ${r} ppm.`,
+  cal_last_l: 'Última calibración',
+  cal_last: (w, b, r, d) => `${w}: marcaba ${b} ppm y se ajustó a ${r} ppm (${d} ppm).`,
+  cal_none: 'Ninguna registrada: la calibración de fábrica, o una hecha fuera de esta página.',
+  cal_when_unknown: 'Fecha desconocida',
+  cal_undo: 'Deshacer la última calibración',
+  cal_undo_hint: 'Aplica la corrección contraria. A diferencia de calibrar, sirve con cualquier aire estable, también en interior.',
+  cal_keep: 'La corrección se guarda en el sensor y sobrevive a los apagados. No hay forma de volver exactamente a la calibración de fábrica, solo otra calibración o el deshacer de arriba.',
+  cal_undo_confirm: d => `Se aplicará una corrección de ${d} ppm, la contraria de la última calibración. ¿Continuar?`,
+  cal_undone: 'Última calibración deshecha.',
+  cal_undo_range: ' Con este aire no se puede deshacer: la corrección contraria necesitaría una referencia fuera de 400–2000 ppm. Sí con un aire en el que la lectura sea más alta, en interior por ejemplo.',
+  cal_unrecorded: ' No se pudo registrar, así que no se podrá deshacer desde aquí.',
+  cal_failed: 'No se pudo calibrar: ',
+  cal_err: {
+    sensor: 'el sensor no da lecturas',
+    altitude: 'la altitud guardada aún no está en el sensor; reinicia primero',
+    unstable: 'las lecturas aún no son estables',
+    nothing_to_undo: 'no hay ninguna calibración que deshacer',
+    range: 'la referencia debe estar entre 400 y 2000 ppm',
+    too_far: 'la corrección es demasiado grande para que este aire sea una buena referencia',
+    timeout: 'el sensor no respondió a tiempo; comprueba la lectura antes de reintentar',
+    busy: 'hay otra calibración en curso',
+    refused: 'el sensor la rechazó',
+  },
+  sum_cal_none: 'de fábrica',
+  sum_cal: w => `calibrado ${w}`,
+
+  err_topic: 'el topic base', err_hap: 'el prefijo de Discovery',
+  err_wild: w => `${w} no puede llevar + # " ni \\`,
+  err_empty: w => `${w} no puede tener niveles vacíos`,
+  err_dollar: w => `${w} no puede empezar por $`,
+  err_key: 'falta la clave privada del certificado de cliente',
+  saved_applied: 'Guardado y aplicado.',
+  saved_restarting: 'Guardado. Reiniciando…',
+  saved_restarted: 'Guardado y reiniciado.',
+  saved_radio_off: 'Guardado. El medidor se reinicia sin Wi-Fi: esta página deja de estar disponible.',
+  saved_new_net: (n, u) => `Guardado. El medidor se reinicia y se une a ${n}. Búscalo en ${u}`,
+  not_back: u => `El medidor no responde todavía. Prueba en ${u}`,
+  save_failed: 'No se pudo guardar: ',
+  restarting: 'Reiniciando…', restarted: 'Reiniciado.',
+  restart_failed: 'No se pudo reiniciar: ',
+  pick_bin: 'Elige primero un fichero .bin',
+  uploading: k => `Subiendo ${k} kB…`,
+  updated: 'Actualizado. Reiniciando…',
+  updated_back: v => `Actualizado y reiniciado: ahora funciona la ${v}. Si es la versión anterior, la nueva no arrancó y se ha vuelto atrás.`,
+  load_failed: 'No se pudieron leer los ajustes del medidor. Reintentando…',
+  upload_failed: 'Falló: ',
+  upload_cut: 'Se cortó la subida. El firmware actual no se ha tocado.'
+}
+};
+
+// The viewer's own choice if this browser has one; otherwise the device's
+// screen language once the settings arrive, and English until then. Storage
+// can be unavailable (private mode, captive portal browsers), and then the
+// page simply follows the device every time.
+let lang = 'en';
+let langChosen = false;
+try {
+  const v = localStorage.getItem('lang');
+  if (T[v]) { lang = v; langChosen = true; }
+} catch (e) {}
+
+function t(key, ...args) {
+  const v = T[lang][key] ?? T.en[key];
+  return typeof v === 'function' ? v(...args) : v;
+}
+
+// Every request that changes something carries this header. The device
+// refuses such requests without it: a page on another site cannot add a
+// custom header without the browser asking the device first, and the device
+// never agrees.
+const GUARD = 'X-CO2-Monitor';
+function post(url, body, type) {
+  const headers = {[GUARD]: '1'};
+  if (type) headers['Content-Type'] = type;
+  return fetch(url, {method: 'POST', headers, body});
+}
+
+const msg = (text, cls) => { const m = $('msg'); m.textContent = text; m.className = cls; };
+
+// The stored SSID may be missing from the scan (a hidden network, or one out of
+// range right now), so it is added by hand to keep it from being lost on save.
+let current = '';
+let keySet = false;   // whether a client key is stored; it is never sent back
+let defaultName = '';
+let cfg = null;       // last answer from /api/config
+let status = {};      // last answer from /api/status
+let networks = null;  // last scan; null while the first one is running
+
+// Where to find the device after a reboot: its mDNS name once known.
+const here = () => 'http://' + (status.hostname ? status.hostname + '.local' : location.host);
+
+function applyLang() {
+  document.documentElement.lang = lang;
+  for (const e of document.querySelectorAll('[data-i18n]')) e.textContent = t(e.dataset.i18n);
+  for (const e of document.querySelectorAll('[data-i18n-html]')) e.innerHTML = t(e.dataset.i18nHtml);
+  for (const b of document.querySelectorAll('#lang button'))
+    b.setAttribute('aria-pressed', b.dataset.lang === lang);
+  document.title = lang === 'es' ? 'Medidor de CO2' : 'CO2 Monitor';
+  if (cfg) showConfigText();
+  refresh();
+  if (status.uptime_s !== undefined) showStatus(status);
+}
+
+for (const b of document.querySelectorAll('#lang button')) {
+  b.addEventListener('click', () => {
+    lang = b.dataset.lang;
+    langChosen = true;
+    try { localStorage.setItem('lang', lang); } catch (e) {}
+    applyLang();
+  });
+}
+
+//---- formatting -------------------------------------------------------------
+
+function duration(s) {
+  if (s < 60) return s + ' s';
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600),
+        m = Math.floor(s % 3600 / 60), r = s % 60;
+  if (d) return d + ' d ' + h + ' h';
+  if (h) return h + ' h' + (m ? ' ' + m + ' min' : '');
+  return m + ' min' + (r ? ' ' + r + ' s' : '');
+}
+
+// Same ramp as the screen (main/co2_color.c), so the page and the device agree
+// on what a given reading looks like.
+const RAMP = [[0,0x76,0xB0,0x43],[800,0x76,0xB0,0x43],[1000,0xF2,0xD0,0x2E],
+              [1400,0xF2,0xD0,0x2E],[1700,0xE0,0x7B,0x26],[2000,0xE0,0x7B,0x26],
+              [2500,0x9E,0x2B,0x25]];
+function co2Color(ppm) {
+  let a = RAMP[0];
+  for (const b of RAMP) {
+    if (ppm <= b[0]) {
+      const k = b[0] > a[0] ? (ppm - a[0]) / (b[0] - a[0]) : 0;
+      return `rgb(${[1, 2, 3].map(i => Math.round(a[i] + (b[i] - a[i]) * k))})`;
+    }
+    a = b;
+  }
+  return `rgb(${a.slice(1)})`;
+}
+
+function signal(rssi) {
+  const q = rssi >= -60 ? t('sig_good') : rssi >= -70 ? t('sig_fair') : t('sig_weak');
+  return `${rssi} dBm (${q})`;
+}
+
+function host(uri) {
+  const m = uri.match(/^mqtts?:\/\/([^/:]+)/);
+  return m ? m[1] : uri;
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
+}
+
+//---- live status ------------------------------------------------------------
+
+async function poll() {
+  if (document.hidden) return;
+  try {
+    const r = await fetch('/api/status', {cache: 'no-store'});
+    if (!r.ok) throw 0;
+    status = await r.json();
+  } catch (e) {
+    $('live').classList.add('stale');
+    $('lwifi').textContent = t('no_answer');
+    return;
+  }
+  showStatus(status);
+}
+
+function showStatus(s) {
+  const fresh = s.sensor_ok !== false && s.co2 !== undefined;
+  $('live').classList.toggle('stale', !fresh);
+  if (s.co2 !== undefined) {
+    $('lco2').textContent = s.co2;
+    $('lco2').style.color = co2Color(s.co2);
+    $('lt').textContent = s.temperature.toFixed(1);
+    $('lh').textContent = s.humidity;
+  }
+  $('lsensor').textContent = s.sensor_ok === false ? t('sensor_bad')
+                                                   : t('sensor_ok', cfg && cfg.sensor_fw);
+  $('lsensor').classList.toggle('bad', s.sensor_ok === false);
+  $('lwifi').textContent = s.setup_mode ? t('setup_mode')
+                         : s.ip ? `${signal(s.rssi)} · TX ${s.tx_dbm} dBm · ${s.ip} · ${s.hostname}.local`
+                         : t('connecting');
+  const uri = $('uri').value.trim();
+  $('lmqtt').innerHTML = !uri || s.setup_mode ? `<span class="dot"></span>${esc(t('mqtt_unused'))}`
+    : s.mqtt_connected ? `<span class="dot on"></span>${esc(t('mqtt_on', host(uri)))}`
+    : `<span class="dot off"></span>${esc(t('mqtt_off', host(uri)))}`;
+  $('lup').textContent = duration(s.uptime_s);
+  showCal();
+}
+
+//---- settings ---------------------------------------------------------------
+
+async function loadConfig() {
+  const r = await fetch('/api/config', {cache: 'no-store'});
+  if (!r.ok) throw new Error(await r.text());
+  const c = cfg = await r.json();
+  current = c.wifi_ssid || '';
+  $('uri').value  = c.mqtt_uri || '';
+  $('user').value = c.mqtt_user || '';
+  $('name').value = c.device_name || '';
+  defaultName = 'CO2 Monitor ' + (c.mqtt_topic_default || '').split('/').pop();
+  $('name').placeholder = defaultName;
+  $('alt').value  = c.altitude_m || 0;
+  $('diff').value = '';
+  $('disc').checked = !!c.ha_discovery;
+  $('hap').value = c.ha_prefix || 'homeassistant';
+  $('topic').value = c.mqtt_topic || '';
+  $('topic').placeholder = c.mqtt_topic_default || '';
+  $('retain').checked = !!c.mqtt_retain;
+  $('ca').value = c.mqtt_ca || '';
+  $('ccert').value = c.mqtt_client_cert || '';
+  keySet = !!c.mqtt_client_key_set;
+  $('ckey').value = '';
+  $('mpclear').checked = false;
+  $('mpclearbox').style.display = c.mqtt_pass_set ? '' : 'none';
+  $('blf').value = c.backlight_full ?? 100;
+  $('bld').value = c.backlight_dim ?? 3;
+  $('bars').value = String(c.chart_bars || 40);
+  $('bars_s').value = String(c.chart_bar_s || 20);
+  $('slang').value = T[c.language] ? c.language : 'en';
+  $('led').checked = c.led_enabled !== false;
+  if (!langChosen && T[c.language] && c.language !== lang) {
+    lang = c.language;
+    applyLang();
+  }
+  $('vfw').textContent = c.fw_version || '—';
+  $('vhw').textContent = c.hw_revision || '—';
+  $('wen').checked = c.wifi_enabled !== false;
+  $('mpass').value = $('pass').value = '';
+  // Opened when it holds anything beyond the defaults, so a setting in use is
+  // never hidden away.
+  $('s-adv').open = !!(c.mqtt_topic || c.mqtt_retain || c.mqtt_ca || c.mqtt_client_cert
+                       || keySet || (c.mqtt_uri || '').startsWith('mqtts://'));
+  showConfigText();
+  toggleNet();
+  toggleCa();
+  refresh();
+}
+
+// The parts of the settings that are sentences, redone on a language change.
+function showConfigText() {
+  const c = cfg;
+  // What the sensor reports back, not what it was asked for: a failed write
+  // would show up here as a difference.
+  const held = ((c.sensor_temp_offset_c100 || 0) / 100).toFixed(2);
+  $('cur').innerHTML = t('cur', held, c.sensor_altitude_m || 0);
+  $('cur').dataset.held = held;
+  $('vsens').textContent = c.sensor_fw || t('unknown');
+  $('pass').placeholder  = c.wifi_pass_set ? t('unchanged') : '';
+  $('mpass').placeholder = c.mqtt_pass_set ? t('unchanged') : '';
+  $('ckey').placeholder  = keySet ? t('unchanged') : '-----BEGIN PRIVATE KEY-----';
+  if (networks) fillNetworks(networks);
+  else $('ssid').innerHTML = `<option value="">${esc(t('scanning'))}</option>`;
+  showCal();
+}
+
+// Everything derived from the fields: visibility, readouts and the summary
+// line of each section.
+function refresh() {
+  $('hapbox').style.display = $('disc').checked ? '' : 'none';
+  $('blfv').textContent = $('blf').value + ' %';
+  $('bldv').textContent = $('bld').value == 0 ? t('off') : $('bld').value + ' %';
+
+  const bars = Number($('bars').value), secs = Number($('bars_s').value);
+  $('window').innerHTML = t('window', bars, duration(secs), duration(bars * secs));
+  $('retain_hint').textContent = t('retain_hint', duration(secs));
+
+  $('sum-net').textContent = !$('wen').checked ? t('sum_wifi_off')
+                           : $('ssid').value || current || t('sum_no_net');
+  const uri = $('uri').value.trim();
+  $('sum-mqtt').textContent = !uri ? t('sum_unset')
+    : host(uri) + (uri.startsWith('mqtts://') ? ' · TLS' : '')
+                + ($('disc').checked ? ' · Home Assistant' : '');
+  $('sum-disp').textContent = t('sum_disp', $('blf').value, bars, duration(secs));
+  $('sum-sens').textContent = t('sum_sens', $('alt').value || 0, $('cur').dataset.held || '0.00');
+  $('sum-sys').textContent = ($('name').value.trim() || defaultName)
+                           + (cfg && cfg.fw_version ? ' · ' + cfg.fw_version : '');
+  showCal();
+}
+
+function fillNetworks(list) {
+  const sel = $('ssid');
+  const keep = sel.value || current;
+  sel.innerHTML = '';
+  const names = list.map(n => n.ssid);
+  if (current && !names.includes(current)) names.unshift(current);
+  if (!names.length) {
+    sel.innerHTML = `<option value="">${esc(t('no_networks'))}</option>`;
+    refresh();
+    return;
+  }
+  for (const n of names) {
+    const net = list.find(x => x.ssid === n);
+    const o = document.createElement('option');
+    o.value = n;
+    o.textContent = net ? `${n}  ${net.secure ? '🔒' : ''} ${net.rssi} dBm` : n;
+    if (n === keep) o.selected = true;
+    sel.appendChild(o);
+  }
+  refresh();
+}
+
+async function scan() {
+  if (!$('wen').checked) { fillNetworks(networks = networks || []); return; }
+  $('rescan').disabled = true;
+  $('ssid').innerHTML = `<option value="">${esc(t('scanning'))}</option>`;
+  try { networks = await (await fetch('/api/scan')).json(); }
+  catch (e) { networks = []; }
+  fillNetworks(networks);
+  $('rescan').disabled = false;
+}
+
+function body() {
+  const b = {
+    wifi_ssid: $('ssid').value,
+    mqtt_uri: $('uri').value.trim(),
+    mqtt_user: $('user').value,
+    device_name: $('name').value.trim(),
+    altitude_m: Number($('alt').value || 0),
+    ha_discovery: $('disc').checked,
+    ha_prefix: $('hap').value.trim(),
+    mqtt_topic: $('topic').value.trim(),
+    mqtt_retain: $('retain').checked,
+    mqtt_ca: $('ca').value.trim(),
+    mqtt_client_cert: $('ccert').value.trim(),
+    wifi_enabled: $('wen').checked,
+    backlight_full: Number($('blf').value),
+    backlight_dim: Number($('bld').value),
+    chart_bars: Number($('bars').value),
+    chart_bar_s: Number($('bars_s').value),
+    language: $('slang').value,
+    led_enabled: $('led').checked
+  };
+  // Blank means "not calibrating now", which is not the same as "the
+  // difference is zero", so the field is only sent when filled in.
+  if ($('diff').value !== '') {
+    b.temp_offset_delta_c100 = Math.round(Number($('diff').value) * 100);
+  }
+  // Passwords only go out when typed: blank means "keep the stored one".
+  if ($('pass').value)  b.wifi_pass = $('pass').value;
+  if ($('mpass').value) b.mqtt_pass = $('mpass').value;
+  else if ($('mpclear').checked) b.mqtt_pass_clear = true;
+  if ($('ckey').value.trim()) b.mqtt_client_key = $('ckey').value.trim();
+  return b;
+}
+
+// Same rules the firmware applies, checked here to warn before sending.
+function topicError(v, what) {
+  if (!v) return '';
+  if (/[+#"\\]/.test(v)) return t('err_wild', what);
+  if (v.startsWith('/') || v.endsWith('/') || v.includes('//')) return t('err_empty', what);
+  if (v.startsWith('$')) return t('err_dollar', what);
+  return '';
+}
+
+// Returns whether the device asked for a reboot.
+async function save() {
+  const te = topicError($('topic').value.trim(), t('err_topic'))
+          || topicError($('hap').value.trim(), t('err_hap'));
+  if (te) throw new Error(te);
+  if ($('ccert').value.trim() && !$('ckey').value.trim() && !keySet)
+    throw new Error(t('err_key'));
+  const r = await post('/api/config', JSON.stringify(body()), 'application/json');
+  if (!r.ok) throw new Error(await r.text());
+  // Accepted, so the correction is already added: the field must not be able
+  // to add it a second time, whatever happens next.
+  $('diff').value = '';
+  return !!(await r.json()).restart;
+}
+
+// Waits for the device to answer again after a reboot. It may not: with a new
+// network or the radio off it comes back somewhere else, or not at all.
+async function waitBack(done) {
+  await new Promise(r => setTimeout(r, 4000));
+  for (let i = 0; i < 30; i++) {
+    try {
+      const r = await fetch('/api/status', {cache: 'no-store'});
+      if (r.ok) {
+        await loadConfig();
+        await poll();
+        msg(typeof done === 'function' ? done() : done, 'ok');
+        return;
+      }
+    } catch (e) { /* still booting */ }
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  msg(t('not_back', here()), 'err');
+}
+
+$('f').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('save').disabled = true;
+  const wasSetup = !!status.setup_mode;
+  const newNet = $('ssid').value !== current;
+  const radioOff = !$('wen').checked;
+  try {
+    if (await save()) {
+      await post('/api/reboot');
+      if (radioOff) {
+        msg(t('saved_radio_off'), 'ok');
+      } else if (wasSetup || newNet) {
+        msg(t('saved_new_net', $('ssid').value, here()), 'ok');
+      } else {
+        msg(t('saved_restarting'), 'ok');
+        await waitBack(t('saved_restarted'));
+      }
+    } else {
+      await loadConfig();
+      msg(t('saved_applied'), 'ok');
+    }
+  } catch (err) { msg(t('save_failed') + err.message, 'err'); }
+  $('save').disabled = false;
+});
+
+$('reboot').addEventListener('click', async () => {
+  $('reboot').disabled = true;
+  try {
+    await post('/api/reboot');
+    msg(t('restarting'), 'ok');
+    await waitBack(t('restarted'));
+  } catch (err) { msg(t('restart_failed') + err.message, 'err'); }
+  $('reboot').disabled = false;
+});
+
+// The network fields are dimmed when the radio is off: they are still saved,
+// so they are not lost, but it is clear they will not be used.
+function toggleNet() {
+  const off = !$('wen').checked;
+  for (const id of ['ssid', 'pass', 'rescan']) $(id).disabled = off;
+  $('ssid').parentElement.style.opacity = off ? .45 : 1;
+}
+
+// The TLS fields only matter with mqtts://, so they are hidden otherwise. But
+// not while they still hold something: moving back to a plain broker must
+// leave a way to clear a stored certificate and key.
+function toggleCa() {
+  const tls  = $('uri').value.trim().startsWith('mqtts://');
+  const kept = $('ca').value.trim() || $('ccert').value.trim() || keySet;
+  $('cabox').style.display = tls || kept ? '' : 'none';
+  $('tlsunused').style.display = tls ? 'none' : '';
+  if (tls) $('s-adv').open = true;
+}
+
+$('wen').addEventListener('change', toggleNet);
+$('uri').addEventListener('input', toggleCa);
+$('f').addEventListener('input', refresh);
+$('f').addEventListener('change', refresh);
+
+$('flash').addEventListener('click', () => {
+  const f = $('fw').files[0];
+  if (!f) { msg(t('pick_bin'), 'err'); return; }
+
+  // XHR rather than fetch: the upload progress event is needed and fetch does
+  // not expose it. With a one-megabyte image, a still bar looks like a hang.
+  const x = new XMLHttpRequest();
+  $('bar').style.display = 'block';
+  $('flash').disabled = $('save').disabled = true;
+
+  x.upload.onprogress = e => {
+    if (e.lengthComputable) $('fill').style.width = (e.loaded / e.total * 100) + '%';
+  };
+  x.onload = () => {
+    if (x.status === 200) {
+      msg(t('updated'), 'ok');
+      waitBack(() => t('updated_back', cfg.fw_version)).then(() => {
+        $('flash').disabled = $('save').disabled = false;
+        $('fw').value = '';
+        $('bar').style.display = 'none';
+      });
+    } else {
+      msg(t('upload_failed') + x.responseText, 'err');
+      $('flash').disabled = $('save').disabled = false;
+    }
+  };
+  x.onerror = () => {
+    msg(t('upload_cut'), 'err');
+    $('flash').disabled = $('save').disabled = false;
+  };
+
+  msg(t('uploading', Math.round(f.size / 1024)), 'ok');
+  x.open('POST', '/api/ota');
+  x.setRequestHeader(GUARD, '1');
+  x.send(f);
+});
+
+//---- CO2 calibration --------------------------------------------------------
+
+const signed = d => (d > 0 ? '+' : '') + d;
+let calBusy = false;   // a request is out; both buttons wait for it
+
+function calWhen(at) {
+  if (!at) return t('cal_when_unknown');
+  return new Date(at * 1000).toLocaleString(lang === 'es' ? 'es-ES' : 'en-GB',
+                                            {dateStyle: 'short', timeStyle: 'short'});
+}
+
+// Everything the section shows is derived here, from the stored settings, the
+// live status and the reference field, and the buttons only unlock when the
+// device would accept the request. The device checks the same things again.
+function showCal() {
+  if (!cfg) return;
+  const c = status.cal || {};
+  const sensorAlt = cfg.sensor_altitude_m || 0;
+  const formAlt = Number($('alt').value || 0);
+  const altOk = formAlt === sensorAlt && (cfg.altitude_m || 0) === sensorAlt;
+  $('calalt').innerHTML = !altOk ? t('cal_alt_pending', formAlt, sensorAlt)
+                        : sensorAlt === 0 ? t('cal_alt_zero') : t('cal_alt_ok', sensorAlt);
+  $('calalt').classList.toggle('warn', !altOk || sensorAlt === 0);
+  $('calasc').style.display = cfg.sensor_asc ? '' : 'none';
+
+  const live = status.sensor_ok !== false && c.run_s !== undefined && c.avg > 0;
+  const ref = Number($('calref').value);
+  const refOk = Number.isInteger(ref) && ref >= 400 && ref <= 2000;
+  const d = ref - c.avg;
+  // A correction past the limit is a wide calibration, which the device
+  // accepts with noisier readings, so the steadiness shown follows it.
+  const far = live && Math.abs(d) > c.delta_max;
+  const ready = far ? c.ready_wide : c.ready;
+
+  $('calstate').innerHTML = !live ? t('cal_nosensor')
+    : ready ? t('cal_steady', c.avg, c.spread)
+    : c.run_s < 120 ? t('cal_running', duration(c.run_s))
+    : t('cal_unsteady', c.spread, far ? c.spread_wide_max : c.spread_max);
+
+  $('calprev').innerHTML = !refOk ? t('cal_badref')
+    : !live ? ''
+    : far ? t('cal_far', signed(d), c.delta_max)
+    : t('cal_prev', c.avg, signed(d));
+  $('calprev').classList.toggle('warn', !refOk || far);
+  $('calgo').disabled = !(altOk && live && ready && refOk) || calBusy;
+
+  const f = cfg.frc;
+  // The undo is a calibration too, so the sensor's range applies to it: after
+  // a wide one the opposite correction usually falls outside it.
+  const undoRef = f && live ? c.avg - (f.reference - f.before) : 0;
+  const undoOk = !f || !live || (undoRef >= 400 && undoRef <= 2000);
+  $('callast').textContent = (f
+    ? t('cal_last', calWhen(f.at), f.before, f.reference, signed(f.reference - f.before))
+    : t('cal_none')) + (undoOk ? '' : t('cal_undo_range'));
+  $('calundo').disabled = !(f && altOk && live && c.ready && undoOk) || calBusy;
+  $('sum-cal').textContent = !f ? t('sum_cal_none')
+    : t('sum_cal', f.at ? new Date(f.at * 1000).toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-GB') : '');
+}
+
+async function calibrate(undo) {
+  const c = status.cal || {};
+  const f = cfg.frc;
+  const ref = Number($('calref').value);
+  const wide = !undo && Math.abs(ref - c.avg) > c.delta_max;
+  const ok = undo ? confirm(t('cal_undo_confirm', signed(f.before - f.reference)))
+           : wide ? confirm(t('cal_confirm_wide', c.avg, ref, signed(ref - c.avg)))
+                  : confirm(t('cal_confirm', c.avg, ref, signed(ref - c.avg)));
+  if (!ok) return;
+
+  calBusy = true;
+  showCal();
+  const at = Math.floor(Date.now() / 1000);
+  try {
+    const r = await post('/api/frc', JSON.stringify(undo ? {undo: true, at} : {reference: ref, wide, at}),
+                         'application/json');
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((t('cal_err') || {})[j.error] || j.error || r.status);
+    cfg.frc = undo ? undefined : j.frc;
+    msg((undo ? t('cal_undone') : t('cal_done', j.before, j.reference))
+        + (j.recorded === false && !undo ? t('cal_unrecorded') : ''), 'ok');
+    await poll();
+  } catch (err) { msg(t('cal_failed') + err.message, 'err'); }
+  calBusy = false;
+  showCal();
+}
+
+$('calgo').addEventListener('click', () => calibrate(false));
+$('calundo').addEventListener('click', () => calibrate(true));
+
+$('rescan').addEventListener('click', scan);
+document.addEventListener('visibilitychange', poll);
+setInterval(poll, 5000);
+applyLang();
+// The meter may still be busy right after boot; keep trying rather than
+// leave a page with empty fields that would save as empty.
+async function start() {
+  for (;;) {
+    try { await loadConfig(); break; }
+    catch (e) { msg(t('load_failed'), 'err'); await new Promise(r => setTimeout(r, 3000)); }
+  }
+  if ($('msg').className === 'err') $('msg').className = '';
+  poll();
+  scan();
+}
+start();
+</script>
+</body>
+</html>
