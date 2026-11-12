@@ -425,7 +425,8 @@ en: {
   sec_net: 'Network', sec_disp: 'Display', sec_sens: 'Sensor', sec_sys: 'System',
   wifi_on: 'Wi-Fi enabled',
   wifi_on_hint: 'With Wi-Fi off the meter stops transmitting altogether: no network, no access point and no page. To get back, hold the centre button for 3 seconds.',
-  scanning: 'Scanning…', no_networks: 'No networks',
+  scanning: 'Scanning…', no_networks: 'No networks', choose_net: '— Choose a network —',
+  saved_still_setup: 'Saved. No network chosen, so the meter restarts in setup mode, with this same access point.',
   rescan: 'Scan again',
   password: 'Password', unchanged: '(unchanged)',
   uri_hint: '<code>mqtt://</code> unencrypted, usually on port 1883, or <code>mqtts://</code> with TLS, usually on 8883. Empty publishes nothing. Changing the broker\'s host clears the stored password unless you type it again.',
@@ -561,7 +562,8 @@ es: {
   sec_net: 'Red', sec_disp: 'Pantalla', sec_sens: 'Sensor', sec_sys: 'Sistema',
   wifi_on: 'Wi-Fi activada',
   wifi_on_hint: 'Al desactivarla el medidor deja de emitir por completo: sin red, sin punto de acceso y sin esta página. Para volver, mantén pulsado el botón central 3 segundos.',
-  scanning: 'Buscando redes…', no_networks: 'Sin redes',
+  scanning: 'Buscando redes…', no_networks: 'Sin redes', choose_net: '— Elige una red —',
+  saved_still_setup: 'Guardado. No has elegido red, así que el medidor se reinicia en modo configuración, con este mismo punto de acceso.',
   rescan: 'Volver a buscar',
   password: 'Contraseña', unchanged: '(sin cambios)',
   uri_hint: '<code>mqtt://</code> sin cifrar, normalmente en el puerto 1883, o <code>mqtts://</code> con TLS, normalmente en el 8883. Vacío no publica nada. Al cambiar el host del broker se borra la contraseña guardada, salvo que la escribas de nuevo.',
@@ -927,6 +929,16 @@ function fillNetworks(list) {
     refresh();
     return;
   }
+  // With no network stored, nothing may be preselected: the browser would
+  // pick the first one in range, and saving any other setting would then
+  // join it with no password and leave setup mode for good.
+  if (!current) {
+    const o = document.createElement('option');
+    o.value = '';
+    o.textContent = t('choose_net');
+    o.selected = !keep;
+    sel.appendChild(o);
+  }
   for (const n of names) {
     const net = list.find(x => x.ssid === n);
     const o = document.createElement('option');
@@ -1036,6 +1048,8 @@ $('f').addEventListener('submit', async e => {
       await post('/api/reboot');
       if (radioOff) {
         msg(t('saved_radio_off'), 'ok');
+      } else if (!$('ssid').value) {
+        msg(t('saved_still_setup'), 'ok');
       } else if (wasSetup || newNet) {
         msg(t('saved_new_net', $('ssid').value, here()), 'ok');
       } else {
