@@ -70,9 +70,20 @@ static struct {
 // still a sound figure next to a correction of hundreds of ppm.
 #define CAL_SPREAD_WIDE_MAX 150
 
+// The temperature calibration takes the same window, in hundredths of a degree.
+// The meter warms itself for a while after power-up, so a reference is only
+// taken once it has been running TEMP_WARMUP_S. Saving the correction restarts
+// the meter, so the same wait also keeps a second correction from being piled
+// on one the sensor is still easing into, which takes it 10-15 minutes.
+#define TEMP_WARMUP_S     (20 * 60)
+#define TEMP_SPREAD_MAX   30       // 0.3 degrees between the lowest and highest
+#define TEMP_REF_MIN_C100 (-1000)  // a reference outside -10..60 degrees is a typo
+#define TEMP_REF_MAX_C100 6000
+
 // Protected by s_reading_lock, like the reading itself.
 static struct {
     uint16_t ppm[CAL_READINGS];
+    int16_t  temp_c100[CAL_READINGS];
     uint16_t n;          // how many of them hold a reading, up to CAL_READINGS
     uint16_t next;       // where the next one goes
     int64_t  since_us;   // start of the current unbroken run
@@ -90,6 +101,9 @@ typedef struct {
     uint32_t run_s;      // how long the readings have been coming unbroken
     uint16_t spread;
     uint16_t avg;
+    bool     temp_ready;       // a full window, and the temperature steady
+    uint16_t temp_spread_c100;
+    int32_t  temp_avg_c100;
 } cal_stats_t;
 
 static cal_stats_t cal_stats(void)
@@ -100,12 +114,18 @@ static cal_stats_t cal_stats(void)
     portENTER_CRITICAL(&s_reading_lock);
     uint32_t sum = 0;
     uint16_t lo = UINT16_MAX, hi = 0;
+    int32_t  tsum = 0;
+    int16_t  tlo = INT16_MAX, thi = INT16_MIN;
     uint16_t n = s_cal.n;
     for (uint16_t i = 0; i < n; i++) {
         uint16_t v = s_cal.ppm[i];
         sum += v;
         lo = v < lo ? v : lo;
         hi = v > hi ? v : hi;
+        int16_t tv = s_cal.temp_c100[i];
+        tsum += tv;
+        tlo = tv < tlo ? tv : tlo;
+        thi = tv > thi ? tv : thi;
     }
     int64_t since = s_cal.since_us;
     portEXIT_CRITICAL(&s_reading_lock);
@@ -118,6 +138,11 @@ static cal_stats_t cal_stats(void)
     st.avg    = (uint16_t)((sum + n / 2) / n);
     st.ready      = (n == CAL_READINGS) && st.spread <= CAL_SPREAD_MAX;
     st.ready_wide = (n == CAL_READINGS) && st.spread <= CAL_SPREAD_WIDE_MAX;
+
+    // Rounded to the nearest hundredth, negative temperatures included.
+    st.temp_avg_c100    = (tsum >= 0 ? tsum + n / 2 : tsum - n / 2) / n;
+    st.temp_spread_c100 = (uint16_t)(thi - tlo);
+    st.temp_ready       = (n == CAL_READINGS) && st.temp_spread_c100 <= TEMP_SPREAD_MAX;
     return st;
 }
 
@@ -131,6 +156,10 @@ void web_config_set_reading(uint16_t ppm, float temperature, float humidity)
         s_cal.since_us = now;
     }
     s_cal.ppm[s_cal.next] = ppm;
+    // Clamped to what fits: the sensor's range is -40 to 70 degrees anyway.
+    float tc = roundf(temperature * 100.0f);
+    s_cal.temp_c100[s_cal.next] = (int16_t)(tc < INT16_MIN ? INT16_MIN
+                                          : tc > INT16_MAX ? INT16_MAX : tc);
     s_cal.next = (s_cal.next + 1) % CAL_READINGS;
     if (s_cal.n < CAL_READINGS) {
         s_cal.n++;
@@ -376,6 +405,19 @@ static esp_err_t status_get(httpd_req_t *req)
         cJSON_AddNumberToObject(c, "delta_max",  CAL_DELTA_MAX);
         cJSON_AddBoolToObject(c,   "ready_wide", cal.ready_wide);
         cJSON_AddNumberToObject(c, "spread_wide_max", CAL_SPREAD_WIDE_MAX);
+    }
+
+    cJSON *tc = cJSON_AddObjectToObject(root, "tcal");
+    if (tc != NULL && cal.avg > 0) {   // the window holds at least one reading
+        cJSON_AddBoolToObject(tc,   "ready",       cal.temp_ready);
+        cJSON_AddNumberToObject(tc, "avg_c100",    cal.temp_avg_c100);
+        cJSON_AddNumberToObject(tc, "spread_c100", cal.temp_spread_c100);
+    }
+    if (tc != NULL) {
+        cJSON_AddNumberToObject(tc, "spread_max_c100", TEMP_SPREAD_MAX);
+        cJSON_AddNumberToObject(tc, "warmup_s",        TEMP_WARMUP_S);
+        cJSON_AddNumberToObject(tc, "ref_min_c100",    TEMP_REF_MIN_C100);
+        cJSON_AddNumberToObject(tc, "ref_max_c100",    TEMP_REF_MAX_C100);
     }
 
     char *out = cJSON_PrintUnformatted(root);
@@ -1136,6 +1178,126 @@ static esp_err_t frc_post(httpd_req_t *req)
     return sent;
 }
 
+//==============================================================================
+// Temperature calibration
+//==============================================================================
+
+// {"reference_c100": 2350} takes 23.50 degrees from a thermometer next to the
+// meter and works out the correction here, from the meter's own 2-minute
+// average, so the page never has to subtract anything. {"clear": true} removes
+// the correction. Either way the new value is saved and reaches the sensor
+// at boot: the answer asks the page to restart the meter, as a save does.
+//
+// The correction is cumulative for the same reason as the old difference
+// field: the reading is already corrected, so what it is off by now is added
+// to what is stored. The sensor can only subtract, so a total below zero means
+// the meter reads low with no correction at all; it is stored as 0 and said so.
+static esp_err_t temp_post(httpd_req_t *req)
+{
+    if (!web_request_allowed(req, true)) {
+        return ESP_FAIL;
+    }
+
+    char body[96];
+    if (req->content_len >= sizeof(body)) {
+        return frc_refuse(req, "400 Bad Request", "malformed");
+    }
+    int got = 0;
+    while (got < req->content_len) {
+        int n = httpd_req_recv(req, body + got, req->content_len - got);
+        if (n <= 0) {
+            return ESP_FAIL;
+        }
+        got += n;
+    }
+    body[got] = '\0';
+
+    cJSON *root = cJSON_Parse(body);
+    if (root == NULL) {
+        return frc_refuse(req, "400 Bad Request", "malformed");
+    }
+    bool         clear = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "clear"));
+    const cJSON *ref   = cJSON_GetObjectItemCaseSensitive(root, "reference_c100");
+    bool   ref_is_num = cJSON_IsNumber(ref) && isfinite(ref->valuedouble);
+    double ref_v      = ref_is_num ? ref->valuedouble : 0;
+    cJSON_Delete(root);
+
+    app_config_t cfg;
+    app_config_load(&cfg);
+    uint16_t before = cfg.temp_offset_c100;
+    long     target = 0;
+    bool     clamped = false;
+    cal_stats_t st = { 0 };
+
+    if (!clear) {
+        if (!ref_is_num || ref_v != (double)(long)ref_v
+            || ref_v < TEMP_REF_MIN_C100 || ref_v > TEMP_REF_MAX_C100) {
+            return frc_refuse(req, "400 Bad Request", "range");
+        }
+        if (!s_sensor_ok) {
+            return frc_refuse(req, "409 Conflict", "sensor");
+        }
+        if (esp_timer_get_time() / 1000000 < TEMP_WARMUP_S) {
+            return frc_refuse(req, "409 Conflict", "warmup");
+        }
+        // A correction saved but not yet applied (through the API, without the
+        // restart) would make the reading lie about what is in effect.
+        uint16_t sensor_off = 0;
+        scd30_cfg_applied(NULL, &sensor_off);
+        if (sensor_off != cfg.temp_offset_c100) {
+            return frc_refuse(req, "409 Conflict", "pending");
+        }
+        st = cal_stats();
+        if (!st.temp_ready) {
+            return frc_refuse(req, "409 Conflict", "unstable");
+        }
+        target = (long)before + ((long)st.temp_avg_c100 - (long)ref_v);
+        if (target < 0) {
+            target  = 0;
+            clamped = true;
+        }
+        if (target > UINT16_MAX) {
+            target = UINT16_MAX;
+        }
+        ESP_LOGI(TAG, "temperature: meter %.2f (spread %.2f), reference %.2f, "
+                 "correction %.2f -> %.2f%s",
+                 st.temp_avg_c100 / 100.0, st.temp_spread_c100 / 100.0, ref_v / 100.0,
+                 before / 100.0, target / 100.0, clamped ? " (clamped)" : "");
+    } else {
+        ESP_LOGI(TAG, "temperature correction removed (was %.2f)", before / 100.0);
+    }
+
+    cfg.temp_offset_c100 = (uint16_t)target;
+    esp_err_t err = app_config_save(&cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "save: %s", esp_err_to_name(err));
+        return frc_refuse(req, "500 Internal Server Error", "save");
+    }
+
+    cJSON *out = cJSON_CreateObject();
+    if (out == NULL) {
+        return httpd_resp_send_500(req);
+    }
+    cJSON_AddBoolToObject(out,   "ok",          true);
+    cJSON_AddBoolToObject(out,   "restart",     true);
+    cJSON_AddNumberToObject(out, "before_c100", before);
+    cJSON_AddNumberToObject(out, "offset_c100", target);
+    if (!clear) {
+        cJSON_AddNumberToObject(out, "reading_c100",   st.temp_avg_c100);
+        cJSON_AddNumberToObject(out, "reference_c100", ref_v);
+        cJSON_AddBoolToObject(out,   "clamped",        clamped);
+    }
+    char *txt = cJSON_PrintUnformatted(out);
+    cJSON_Delete(out);
+    if (txt == NULL) {
+        return httpd_resp_send_500(req);
+    }
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t sent = httpd_resp_sendstr(req, txt);
+    free(txt);
+    return sent;
+}
+
 // Everything a phone probes for when it joins a network. Answering these with a
 // redirect is what pops the setup page up on its own instead of leaving the
 // user to discover an IP address.
@@ -1156,7 +1318,7 @@ esp_err_t web_config_start(bool captive)
 
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.lru_purge_enable = true;
-    cfg.max_uri_handlers = 10;   // the routes below plus the captive catch-all
+    cfg.max_uri_handlers = 12;   // the routes below plus the captive catch-all
     // The default 4 KB is tight: saving keeps two app_config_t on the stack
     // while cJSON and NVS work on top. config_post() logs what is left.
     cfg.stack_size       = 6144;
@@ -1179,6 +1341,7 @@ esp_err_t web_config_start(bool captive)
         { .uri = "/api/reboot",  .method = HTTP_POST, .handler = reboot_post },
         { .uri = "/api/ota",     .method = HTTP_POST, .handler = ota_post },
         { .uri = "/api/frc",     .method = HTTP_POST, .handler = frc_post },
+        { .uri = "/api/temp",    .method = HTTP_POST, .handler = temp_post },
     };
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); i++) {
         esp_err_t e = httpd_register_uri_handler(s_server, &routes[i]);
